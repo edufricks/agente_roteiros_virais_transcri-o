@@ -1,18 +1,12 @@
-import os
 import streamlit as st
 from openai import OpenAI
 
 # ==========================================
-# Proteção contra versões incorretas do pacote openai
-# ==========================================
-os.system("pip install --upgrade --force-reinstall openai==1.44.0 > /dev/null 2>&1")
-
-# ==========================================
-# Função principal de geração de roteiro
+# Função principal
 # ==========================================
 
 def gerar_roteiro(transcricao: str, api_key: str):
-    """Transforma a transcrição em um roteiro viral completo e fiel."""
+    """Transforma a transcrição em um roteiro viral fiel e envolvente."""
     client = OpenAI(api_key=api_key)
 
     prompt = f"""
@@ -75,16 +69,11 @@ Transcrição original:
 st.set_page_config(page_title="Agente de Roteiros Virais (modo texto)", page_icon="🎬", layout="wide")
 
 st.title("🎬 Agente de Roteiros Virais (modo texto)")
-
 st.caption("Transforme transcrições em roteiros virais envolventes e fiéis aos fatos originais.")
-
 st.divider()
 
-st.markdown("#### 🔑 Insira sua OpenAI API Key:")
-api_key = st.text_input("API Key", type="password")
-
-st.markdown("#### 📝 Cole a transcrição completa do vídeo:")
-transcricao = st.text_area("Cole aqui o texto completo da transcrição:", height=300)
+api_key = st.text_input("🔑 Digite sua chave da OpenAI:", type="password")
+transcricao = st.text_area("📋 Cole a transcrição completa do vídeo aqui:", height=300)
 
 if st.button("Gerar Roteiro"):
     if not api_key:
@@ -93,7 +82,7 @@ if st.button("Gerar Roteiro"):
         st.error("Por favor, cole a transcrição antes de gerar o roteiro.")
     else:
         progress = st.progress(0)
-        with st.spinner("🧠 Processando roteiro..."):
+        with st.spinner("🧠 Gerando roteiro..."):
             progress.progress(50)
             roteiro = gerar_roteiro(transcricao, api_key)
             progress.progress(100)
