@@ -1,14 +1,15 @@
 import streamlit as st
-import openai
+from openai import OpenAI
 
 # ==============================
 # Função principal
 # ==============================
 def gerar_roteiro(transcricao: str, api_key: str):
     """Transforma a transcrição em um roteiro viral fiel e envolvente."""
-    openai.api_key = api_key
+    try:
+        client = OpenAI(api_key=api_key)
 
-    prompt = f"""
+        prompt = f"""
 Você é um roteirista especialista em vídeos virais com alta retenção.
 Sua missão é transformar a transcrição abaixo em um roteiro no formato viral, **sem perder nenhum detalhe real** e **mantendo a ordem cronológica**.
 
@@ -36,13 +37,13 @@ Transcrição original:
 \"\"\"{transcricao}\"\"\"
 """
 
-    try:
-        resposta = openai.ChatCompletion.create(
+        resposta = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
         )
-        return resposta.choices[0].message["content"]
+
+        return resposta.choices[0].message.content
 
     except Exception as e:
         st.error(f"Erro ao gerar roteiro: {e}")
