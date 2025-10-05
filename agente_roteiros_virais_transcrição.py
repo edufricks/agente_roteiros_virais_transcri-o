@@ -1,90 +1,97 @@
 import streamlit as st
-import openai
+import tempfile
+import os
+from openai import OpenAI
+import openai as openai_module  # usado só para mostrar versão opcionalmente
 
-# ==========================================
-# Função principal para gerar o roteiro
-# ==========================================
+# ---------- Helper: show openai version (debug) ------------
+def _openai_version():
+    try:
+        return getattr(openai_module, "__version__", "unknown")
+    except Exception:
+        return "unknown"
+
+# ---------- Roteiro generator (usa novo cliente OpenAI) ----
 def gerar_roteiro(transcricao: str, api_key: str):
-    """Gera o roteiro final no formato viral respeitando a cronologia."""
-    openai.api_key = api_key
+    """
+    Gera roteiro viral com o cliente OpenAI moderno.
+    Instancia OpenAI(api_key=...) e chama client.chat.completions.create(...)
+    """
+    # Cria cliente explicitamente (não setar openai.api_key globalmente)
+    try:
+        client = OpenAI(api_key=api_key)
+    except TypeError as e:
+        # Provavelmente instalação inválida da lib openai (ex: pacote conflitante)
+        raise RuntimeError(
+            "Erro ao inicializar OpenAI client. "
+            "Provavelmente há uma versão/instalação incompatível da biblioteca `openai`.\n"
+            "Verifique se instalou `openai==1.44.0` e não outro pacote chamado `openai`.\n"
+            "Mensagem original: " + str(e)
+        ) from e
 
     prompt = f"""
 Você é um roteirista especialista em vídeos virais com alta retenção.
-Sua missão é transformar a transcrição abaixo em um roteiro no formato viral, **sem perder nenhum detalhe real** e **mantendo a ordem cronológica**.
+Sua missão é transformar a transcrição abaixo em um roteiro no formato viral, sem perder detalhes reais e mantendo ordem cronológica.
 
-🎯 OBJETIVO:
-Criar um roteiro que conte todas as histórias e informações da transcrição de forma envolvente, emocional e cinematográfica — mas sem alterar ou omitir fatos, nomes, números, espécies, locais, datas ou qualquer dado real.
+Regras (resuma em linguagem curta, levando fatos):
+- Inclua nomes, datas, locais e fatos explicitamente presentes na transcrição.
+- Não invente fatos.
+- Use blocos de até 90s revezando momentos opostos e respostas.
+- Inicio (5s hook + até 30s contexto), meio (vários blocos), fim (opinião + CTA).
+- Ao final entregue também: Título chamativo, ideia de thumb, 3 ideias de Shorts, 3 sugestões de edição.
 
-⚠️ REGRAS OBRIGATÓRIAS:
-1. **Todos os dados reais da transcrição devem aparecer no roteiro.**
-   - Inclua nomes, números, locais, datas, espécies, medidas, termos científicos, curiosidades e comparações.
-   - Não simplifique nem generalize fatos (ex: se disser “Ochotona, gênero de mamíferos da família Ochotonidae”, mantenha exatamente isso no roteiro).
-2. **Não invente fatos.**
-   - Pode melhorar a forma de contar, mas nunca criar informações novas.
-3. **Respeite a ordem cronológica do vídeo original.**
-4. **Estilo narrativo:** linguagem natural, fluida e emocional, como em vídeos documentais virais ou narrativas do YouTube.
-5. **Ritmo:** frases curtas, interrogações, pausas dramáticas e ganchos a cada 20–30 segundos.
-6. **Estrutura sugerida:**
-
-Início:
-   - 5 segundos que reflitam a thumb (impacto e curiosidade)
-   - Até 30 segundos de contexto e questionamento inicial
-
-Meio (pode conter vários blocos, até cobrir todas as histórias):
-   - Cada bloco (até 90 segundos) deve:
-       a) Alternar entre momentos opostos (ex: descoberta vs dúvida, sucesso vs fracasso, fragilidade vs superação)
-       b) Fechar com uma resposta surpreendente, insight ou virada
-   - Continue criando novos blocos até representar todo o conteúdo da transcrição
-
-Fim:
-   - Recompensa final: opinião ou conclusão emocional sobre a jornada
-   - CTA de engajamento (seguir, curtir, comentar, etc.)
-
-7. **No final do roteiro, adicione também:**
-   - 🎬 **Título chamativo**
-   - 🖼️ **Ideia de Thumb (imagem + texto)**
-   - 🎞️ **3 ideias de Shorts**
-   - ✂️ **3 sugestões de edição (efeitos, cortes, transições)**
-
-Transcrição original:
+Transcrição:
 \"\"\"{transcricao}\"\"\"
 """
 
-    response = openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
-    )
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Você é um roteirista criativo e preciso."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=1800
+        )
+        # novo SDK: resposta em resp.choices[0].message.content
+        return resp.choices[0].message.content
+    except TypeError as e:
+        # capturamos casos estranhos de incompatibilidade (ex: proxies arg)
+        raise RuntimeError(
+            "Erro ao chamar a API ChatCompletion (provável conflito de versão do SDK `openai`).\n"
+            "Sugestão: reinstale a versão oficial: `pip install --upgrade openai==1.44.0`\n"
+            "Se estiver no Streamlit Cloud, atualize requirements.txt e redeploy.\n"
+            "Mensagem original: " + str(e)
+        ) from e
+    except Exception as e:
+        # repassa erro para UI
+        raise RuntimeError(f"Erro durante a chamada à API da OpenAI: {e}") from e
 
-    return response.choices[0].message.content
 
-
-# ==========================================
-# Interface Streamlit
-# ==========================================
+# ----------------- Streamlit UI -----------------
+st.set_page_config(page_title="Agente de Roteiros Virais (texto)", layout="centered")
 st.title("🎬 Agente de Roteiros Virais (modo texto)")
-st.write("Cole abaixo a transcrição completa do vídeo para gerar um roteiro no formato viral.")
 
-api_key = st.text_input("🔑 Digite sua chave da OpenAI:", type="password")
-transcricao = st.text_area("📝 Cole aqui a transcrição completa do vídeo:", height=300)
+st.markdown("**Debug:** OpenAI lib version: `" + _openai_version() + "`")
+
+api_key = st.text_input("🔑 Insira sua OpenAI API Key:", type="password")
+transcricao = st.text_area("📝 Cole a transcrição do vídeo aqui (texto completo):", height=360)
 
 if st.button("Gerar Roteiro"):
     if not api_key:
-        st.error("Por favor, insira sua chave da OpenAI.")
-    elif not transcricao.strip():
-        st.error("Por favor, cole a transcrição do vídeo.")
+        st.error("Insira sua chave da OpenAI.")
+    elif not transcricao or not transcricao.strip():
+        st.error("Cole a transcrição do vídeo no campo de texto.")
     else:
-        with st.spinner("✨ Gerando roteiro viral com base na transcrição..."):
+        with st.spinner("Gerando roteiro..."):
             try:
                 roteiro = gerar_roteiro(transcricao, api_key)
                 st.success("✅ Roteiro gerado com sucesso!")
                 st.markdown("### 🎯 Roteiro Viral")
                 st.write(roteiro)
-
-                st.download_button(
-                    "📥 Baixar roteiro em .txt",
-                    roteiro,
-                    file_name="roteiro_viral.txt"
-                )
+                st.download_button("📥 Baixar roteiro (.txt)", roteiro, file_name="roteiro_viral.txt")
+            except RuntimeError as e:
+                st.error(str(e))
             except Exception as e:
-                st.error(f"❌ Erro ao gerar roteiro: {e}")
+                st.error(f"Erro inesperado: {e}")
